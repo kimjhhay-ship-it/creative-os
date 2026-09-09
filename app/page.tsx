@@ -21,6 +21,7 @@ type Strategy = {
 type UploadResult = {
   filename: string; summary: string; missingFields: string[]; mode: "demo" | "live";
 };
+type BriefSource = "manual" | "file" | "hybrid";
 
 const emptyBrief: Brief = {
   brand: "", product: "", objective: "", target: "", message: "", media: "",
@@ -49,9 +50,10 @@ export default function Home() {
   const [uploading, setUploading] = useState(false);
   const [uploadResult, setUploadResult] = useState<UploadResult | null>(null);
   const [error, setError] = useState("");
+  const [briefSource, setBriefSource] = useState<BriefSource>("manual");
 
   useEffect(() => {
-    const saved = localStorage.getItem("creative-os-v02");
+    const saved = localStorage.getItem("creative-os-v03") || localStorage.getItem("creative-os-v02");
     if (!saved) return;
     try {
       const data = JSON.parse(saved);
@@ -67,27 +69,39 @@ export default function Home() {
       setMode(data.mode || "");
       setActiveStep(data.activeStep || 0);
       setUploadResult(data.uploadResult || null);
+      setBriefSource(data.briefSource || "manual");
     } catch { /* ignore malformed old state */ }
   }, []);
 
   useEffect(() => {
-    localStorage.setItem("creative-os-v02", JSON.stringify({
+    localStorage.setItem("creative-os-v03", JSON.stringify({
       brief, insights, selected, summary, humanInput, routes, selectedRoutes,
-      strategies, selectedStrategies, mode, activeStep, uploadResult
+      strategies, selectedStrategies, mode, activeStep, uploadResult, briefSource
     }));
-  }, [brief, insights, selected, summary, humanInput, routes, selectedRoutes, strategies, selectedStrategies, mode, activeStep, uploadResult]);
+  }, [brief, insights, selected, summary, humanInput, routes, selectedRoutes, strategies, selectedStrategies, mode, activeStep, uploadResult, briefSource]);
 
   const progress = useMemo(() => `${Math.max(1, activeStep + 1)}/8`, [activeStep]);
   const selectedInsightObjects = useMemo(() => insights.filter(x => selected.includes(x.id)), [insights, selected]);
   const selectedRouteObjects = useMemo(() => routes.filter(x => selectedRoutes.includes(x.id)), [routes, selectedRoutes]);
   const maxUnlocked = strategies.length > 0 ? 3 : insights.length > 0 ? 2 : 1;
 
-  const update = (key: keyof Brief, value: string) => setBrief((prev) => ({ ...prev, [key]: value }));
+  const resetDownstream = () => {
+    setInsights([]); setSelected([]); setSummary(""); setHumanInput("");
+    setRoutes([]); setSelectedRoutes([]); setStrategies([]); setSelectedStrategies([]);
+    setMode("");
+  };
+  const update = (key: keyof Brief, value: string) => {
+    setBrief((prev) => ({ ...prev, [key]: value }));
+    resetDownstream();
+    setBriefSource(prev => prev === "file" ? "hybrid" : prev);
+  };
   const toggle = (id: string) => setSelected((prev) => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   const toggleRoute = (id: string) => setSelectedRoutes((prev) => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   const toggleStrategy = (id: string) => setSelectedStrategies((prev) => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
 
   const analyze = async () => {
+    const hasBrief = Object.values(brief).some(v => v.trim());
+    if (!hasBrief) { setError("브리프를 업로드하거나 최소 한 개 이상의 항목을 입력해주세요."); return; }
     setLoading(true); setError("");
     try {
       const res = await fetch("/api/analyze", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(brief) });
@@ -109,8 +123,9 @@ export default function Home() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "파일 분석에 실패했습니다.");
       setBrief(prev => ({ ...prev, ...data.brief }));
+      resetDownstream();
       setUploadResult({ filename: data.filename, summary: data.summary, missingFields: data.missingFields || [], mode: data.mode });
-      setMode(data.mode || "");
+      setBriefSource("file");
     } catch (e) { setError(e instanceof Error ? e.message : "파일 분석에 실패했습니다."); }
     finally { setUploading(false); }
   };
@@ -167,7 +182,8 @@ export default function Home() {
   const clearAll = () => {
     setBrief(emptyBrief); setInsights([]); setSelected([]); setSummary(""); setHumanInput("");
     setRoutes([]); setSelectedRoutes([]); setStrategies([]); setSelectedStrategies([]);
-    setMode(""); setActiveStep(0); setUploadResult(null); setFile(null); setError("");
+    setMode(""); setActiveStep(0); setUploadResult(null); setFile(null); setError(""); setBriefSource("manual");
+    localStorage.removeItem("creative-os-v03");
     localStorage.removeItem("creative-os-v02");
   };
 
@@ -177,7 +193,7 @@ export default function Home() {
         <div>
           <div className="eyebrow">AI CREATIVE PLANNING</div>
           <h1>CREATIVE<br/>OS</h1>
-          <p className="version">v0.2 / Working Prototype</p>
+          <p className="version">v0.3 / Brief-driven Prototype</p>
         </div>
         <nav>
           {steps.map((step, i) => (
@@ -195,23 +211,24 @@ export default function Home() {
 
         {activeStep === 0 && <>
           <header className="topbar"><div><div className="eyebrow">STEP 01</div><h2>PROJECT BRIEF</h2></div><div className="status">AUTO SAVE</div></header>
-          <p className="lead">좋은 아이디어보다 먼저, 좋은 질문을 만듭니다. 직접 입력하거나 광고주 브리프·회의록 파일을 올려 AI가 먼저 구조화하게 할 수 있습니다.</p>
+          <p className="lead">두 가지 방식 중 편한 방법을 사용하세요. 브리프·회의록 파일을 AI로 분석해 자동 입력하거나, 아래 양식을 직접 작성할 수 있습니다. 파일 분석 후 사람이 내용을 수정하는 것도 가능합니다.</p>
+          <div className="briefsource"><span>BRIEF SOURCE</span><b>{briefSource === "file" ? "AI FILE IMPORT" : briefSource === "hybrid" ? "FILE + HUMAN EDIT" : "MANUAL INPUT"}</b></div>
 
           <section className="uploadbox">
             <div className="uploadcopy">
               <div className="eyebrow">BRIEF IMPORT</div>
               <h3>광고주 브리프 / 회의록 업로드</h3>
-              <p>PDF, DOCX, PPTX, TXT, MD 파일에서 브랜드·목표·타깃·메시지·제약조건을 추출해 아래 Brief 필드에 자동 반영합니다.</p>
+              <p>PDF, DOCX, PPTX, TXT, MD 문서를 AI가 읽어 브랜드·목표·타깃·메시지·매체·필수/주의사항 등을 추출하고 아래 양식을 자동으로 채웁니다. 이후 직접 수정할 수 있습니다.</p>
             </div>
             <div className="uploadcontrols">
               <label className="filepick">
                 <input type="file" accept=".pdf,.docx,.pptx,.txt,.md,text/plain,application/pdf" onChange={handleFile}/>
                 <span>{file ? file.name : "CHOOSE FILE"}</span>
               </label>
-              <button className="primary" disabled={!file || uploading} onClick={analyzeUploadedBrief}>{uploading ? "READING FILE..." : "ANALYZE UPLOADED BRIEF →"}</button>
+              <button className="primary" disabled={!file || uploading} onClick={analyzeUploadedBrief}>{uploading ? "AI READING FILE..." : "AI ANALYZE & FILL →"}</button>
             </div>
             {uploadResult && <div className="uploadresult">
-              <div><b>{uploadResult.filename}</b><span className={`pill ${uploadResult.mode}`}>{uploadResult.mode === "live" ? "AI ANALYZED" : "DEMO"}</span></div>
+              <div><b>{uploadResult.filename}</b><span className={`pill ${uploadResult.mode}`}>{uploadResult.mode === "live" ? "AI ANALYZED + FORM FILLED" : "DEMO EXTRACTION"}</span></div>
               <p>{uploadResult.summary}</p>
               {uploadResult.missingFields.length > 0 && <small>추가 확인 권장: {uploadResult.missingFields.join(" · ")}</small>}
             </div>}
@@ -231,7 +248,7 @@ export default function Home() {
             <Field label="REFERENCE" value={brief.references} onChange={v=>update("references",v)} placeholder="URL 또는 참고사항" wide />
             <Field label="ADDITIONAL NOTES" value={brief.notes} onChange={v=>update("notes",v)} placeholder="그 밖에 AI가 알아야 할 내용" wide />
           </div>
-          <div className="actions"><button className="secondary" onClick={clearAll}>CLEAR</button><button className="primary" onClick={analyze} disabled={loading}>{loading ? "ANALYZING..." : "ANALYZE BRIEF →"}</button></div>
+          <div className="actions"><span className="selection">입력된 모든 필드가 STEP 03 분석의 근거가 됩니다.</span><button className="secondary" onClick={clearAll}>CLEAR</button><button className="primary" onClick={analyze} disabled={loading}>{loading ? "ANALYZING BRIEF..." : "ANALYZE THIS BRIEF →"}</button></div>
         </>}
 
         {activeStep === 1 && <>
@@ -241,8 +258,8 @@ export default function Home() {
 
         {activeStep === 2 && <>
           <header className="topbar"><div><div className="eyebrow">STEP 03</div><h2>INSIGHT EXPLORER</h2></div><div className={`status ${mode === "live" ? "live" : ""}`}>{mode === "live" ? "LIVE AI" : "DEMO MODE"}</div></header>
-          <p className="lead">AI가 먼저 좁히지 않습니다. 가능한 관점을 펼쳐놓고, 사용자가 다음 단계로 가져갈 생각을 선택합니다.</p>
-          {summary && <div className="summary"><span>BRIEF READ</span><p>{summary}</p></div>}
+          <p className="lead">아래 제안은 STEP 01에서 입력하거나 파일에서 추출한 현재 브리프의 내용만을 기반으로 생성됩니다. 브리프를 수정하면 기존 인사이트는 초기화되고 다시 분석해야 합니다.</p>
+          {summary && <div className="summary"><span>BRIEF-BASED ANALYSIS</span><p>{summary}</p></div>}
           <div className="insightgrid">
             {insights.map((item, i) => <article key={item.id} className={`card ${selected.includes(item.id) ? "selected" : ""}`} onClick={()=>toggle(item.id)}>
               <div className="cardtop"><span>{item.type.toUpperCase()}</span><b>{String(i+1).padStart(2,"0")}</b></div>

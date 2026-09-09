@@ -21,7 +21,7 @@ function demoFromText(text: string, filename: string) {
     references: pick(["reference","references","레퍼런스","참고"]), notes: clean ? `업로드 파일 ${filename} 원문 요약용 텍스트가 로드되었습니다.\n${clean.slice(0,900)}` : ""
   };
   const missingFields = fields.filter(k => !brief[k as keyof typeof brief]);
-  return { brief, summary: clean ? "Demo Mode에서는 TXT/MD의 명시적 라벨을 기준으로 필드를 우선 추출했습니다. 실제 AI 의미 분석은 API Key 연결 후 활성화됩니다." : "파일 업로드 UI는 정상입니다. 실제 문서 의미 분석은 API Key 연결 후 활성화됩니다.", missingFields };
+  return { brief, summary: clean ? "Demo Mode에서는 TXT/MD의 명시적 라벨을 현재 브리프 양식에 매핑했습니다. API 연결 시 문서 전체 의미를 AI가 읽고 같은 양식을 자동으로 채웁니다." : "파일 업로드 UI는 정상입니다. 실제 문서 의미 분석은 API Key 연결 후 활성화됩니다.", missingFields };
 }
 
 export async function POST(req: Request) {
@@ -33,6 +33,9 @@ export async function POST(req: Request) {
   if (!process.env.OPENAI_API_KEY) {
     const ext = file.name.toLowerCase().split(".").pop();
     const text = ext === "txt" || ext === "md" ? await file.text() : "";
+    if (ext !== "txt" && ext !== "md") {
+      return NextResponse.json({ error:"PDF/DOCX/PPTX의 AI 문서 분석에는 OPENAI_API_KEY 연결이 필요합니다. TXT/MD는 Demo Mode에서도 라벨 기반 자동 입력을 테스트할 수 있습니다." }, { status:503 });
+    }
     return NextResponse.json({ ...demoFromText(text, file.name), filename:file.name, mode:"demo" });
   }
 
