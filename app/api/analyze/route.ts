@@ -15,48 +15,17 @@ const mock = {
 
 export async function POST(req: Request) {
   const brief = await req.json();
-
-  if (!process.env.OPENAI_API_KEY) {
-    return NextResponse.json({ ...mock, mode: "demo" });
-  }
+  if (!process.env.OPENAI_API_KEY) return NextResponse.json({ ...mock, mode: "demo" });
 
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  const prompt = `당신은 광고 마케팅 크리에이티브 전략가다. 아래 브리프를 분석하라.\n\n${JSON.stringify(brief, null, 2)}\n\n목표: AI가 정답을 하나 고르는 것이 아니라 사용자가 좁혀갈 수 있도록 다양한 관점을 충분히 발산한다. Consumer Insight, Human Truth, Desire, Barrier, Tension, Behavior, Category Insight, Cultural Insight, Brand Truth, Opportunity를 균형 있게 생성하라. 각 항목은 짧은 title과 왜 유효한지 rationale을 가진다. 최소 12개 이상 제안하라.`;
-
+  const prompt = `당신은 광고 마케팅 크리에이티브 전략가다. 아래 브리프를 분석하라.\n\n${JSON.stringify(brief, null, 2)}\n\nAI가 정답을 하나 고르지 말고 사용자가 좁혀갈 수 있도록 다양한 관점을 충분히 발산한다. Consumer Insight, Human Truth, Desire, Barrier, Tension, Behavior, Category Insight, Cultural Insight, Brand Truth, Opportunity를 균형 있게 최소 12개 제안하라.`;
   const response = await client.responses.create({
-    model: "gpt-5.6-terra",
-    input: prompt,
-    text: {
-      format: {
-        type: "json_schema",
-        name: "creative_brief_analysis",
-        strict: true,
-        schema: {
-          type: "object",
-          additionalProperties: false,
-          properties: {
-            summary: { type: "string" },
-            insights: {
-              type: "array",
-              items: {
-                type: "object",
-                additionalProperties: false,
-                properties: {
-                  id: { type: "string" },
-                  type: { type: "string" },
-                  title: { type: "string" },
-                  rationale: { type: "string" }
-                },
-                required: ["id", "type", "title", "rationale"]
-              }
-            }
-          },
-          required: ["summary", "insights"]
-        }
-      }
-    }
+    model: "gpt-5.6-terra", input: prompt,
+    text: { format: { type: "json_schema", name: "creative_brief_analysis", strict: true, schema: {
+      type: "object", additionalProperties: false,
+      properties: { summary: { type: "string" }, insights: { type: "array", items: { type: "object", additionalProperties: false, properties: { id:{type:"string"},type:{type:"string"},title:{type:"string"},rationale:{type:"string"} }, required:["id","type","title","rationale"] } } },
+      required: ["summary","insights"]
+    } } }
   });
-
-  const parsed = JSON.parse(response.output_text);
-  return NextResponse.json({ ...parsed, mode: "live" });
+  return NextResponse.json({ ...JSON.parse(response.output_text), mode: "live" });
 }
